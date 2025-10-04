@@ -1,0 +1,6 @@
+{
+  "name": "EDMC-Courier-Mission",
+  "version": "1.0.0",
+  "description": "Shows System and Station of Courier Missions.",
+  "entry_point": "load"
+}
