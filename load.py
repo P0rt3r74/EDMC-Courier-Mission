@@ -19,7 +19,7 @@ if not logger.hasHandlers():
     logger.addHandler(sh)
     logger.addHandler(fh)
 
-# === Globale Daten ===
+# === Global data ===
 mission_counts = {}
 mission_id_map = {}
 lock = threading.Lock()
@@ -27,17 +27,16 @@ lock = threading.Lock()
 ui_frame = None
 rows_widgets = []
 
-logger.info("Courier Plugin gestartet")
+logger.info("Courier Plugin started")
 # === Plugin-UI ===
 def plugin_app(parent: tk.Frame):
     global ui_frame
     ui_frame = tk.Frame(parent)
 
-    # Hauptüberschrift bleibt immer sichtbar
+    # Main Header in UI
     header = tk.Label(ui_frame, text="Courier-Missions", font=("TkDefaultFont", 9, "bold"))
     header.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(2,1))
 
-    # Keine statischen Spaltenüberschriften mehr hier, die kommen dynamisch in update_ui_table()
 
     theme.update(ui_frame)
     ui_frame.after(0, update_ui_table)
@@ -47,7 +46,7 @@ def update_ui_table():
     global rows_widgets
     if ui_frame is None:
         return
-    # Alte Widgets entfernen (Überschriften, Zeilen, Hinweis)
+    # Remove old Widgets
     for w in rows_widgets:
         w.destroy()
     rows_widgets.clear()
@@ -57,7 +56,7 @@ def update_ui_table():
 
     start_row = 2
     if items:
-        # Überschriften anzeigen
+        # Show headers
         lbl_sys = tk.Label(ui_frame, text="System")
         lbl_sta = tk.Label(ui_frame, text="Station")
         lbl_cnt = tk.Label(ui_frame, text="Anz.")
@@ -66,7 +65,7 @@ def update_ui_table():
         lbl_cnt.grid(row=1, column=2, sticky=tk.E, padx=2)
         rows_widgets.extend([lbl_sys, lbl_sta, lbl_cnt])
 
-        # Missionsdaten anzeigen
+        # Show mission data
         for i, (sys_sta, cnt) in enumerate(items):
             sysname, station = sys_sta
             w0 = tk.Label(ui_frame, text=sysname)
@@ -77,15 +76,14 @@ def update_ui_table():
             w2.grid(row=start_row + i, column=2, sticky=tk.E, padx=2)
             rows_widgets.extend([w0, w1, w2])
     else:
-        # Keine Missionen – Hinweis anzeigen
-        hint = tk.Label(ui_frame, text="Keine aktiven Missionen", fg="gray")
+        # No missions - show hint
+        hint = tk.Label(ui_frame, text="No active missions", fg="gray")
         hint.grid(row=1, column=0, columnspan=3, pady=3)
         rows_widgets.append(hint)
 
     theme.update(ui_frame)
 
 
-# === Plugin-Klasse ===
 def journal_entry(cmdr, is_beta, system, station, entry, state):
     ev = entry.get("event")
     if ev == "LoadGame":
@@ -125,30 +123,30 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
     try:
         ui_frame.after(0, update_ui_table)
     except Exception as e:
-        logger.error(f"Fehler beim UI-Update: {e}")
+        logger.error(f"Error while updating the UI: {e}")
 
-# === Catchup beim Start ===
+# === Catchup from Journals ===
 def do_catchup():
     logger.info("do_catchup() gestartet")
     home = os.path.expanduser("~")
     journal_dir = os.path.join(home, "Saved Games", "Frontier Developments", "Elite Dangerous")
-    logger.info(f"do_catchup: Journal-Verzeichnis = {journal_dir}")
+    logger.info(f"do_catchup: Journal-Path = {journal_dir}")
     if not os.path.isdir(journal_dir):
-        logger.warning(f"Journal-Verzeichnis nicht gefunden: {journal_dir}")
+        logger.warning(f"Journal-Path not found: {journal_dir}")
         return
 
     try:
         files = sorted(f for f in os.listdir(journal_dir) if f.startswith("Journal") and f.endswith(".log"))
         logger.info(f"Journal-Dateien: {files}")
     except Exception as e:
-        logger.error(f"Fehler beim Auflisten des Journal-Ordners: {e}")
+        logger.error(f"Error while listing the Journals: {e}")
         return
 
     
 
-    # 1. Zuerst alle aktiven MissionIDs aus "Missions"-Event sammeln
+    # 1. collect all active Missions
     active_mission_ids = set()
-    for fname in reversed(files):  # reverse = neueste zuerst, um aktuelle Missionen zu finden
+    for fname in reversed(files): 
         full = os.path.join(journal_dir, fname)
         try:
             with open(full, "r", encoding="utf-8") as f:
@@ -166,13 +164,12 @@ def do_catchup():
                             mid = mission.get("MissionID")
                             if mid is not None:
                                 active_mission_ids.add(mid)
-                        # Annahme: Nur ein Missions-Event pro Datei oder wir sammeln alle
         except Exception as e:
-            logger.error(f"Fehler beim Lesen der Journal-Datei {full}: {e}")
+            logger.error(f"Error while reading the Journal {full}: {e}")
 
-    logger.info(f"Gefundene aktive MissionIDs: {active_mission_ids}")
+    logger.info(f"Found active missionIDs: {active_mission_ids}")
 
-    # 2. Suche nun nach System & Station zu den aktiven MissionIDs
+    # 2. get System and Station of active missionIDs
     for fname in files:
         full = os.path.join(journal_dir, fname)
         try:
@@ -208,12 +205,12 @@ def do_catchup():
                                     mission_counts[key] = mission_counts.get(key, 1) - 1
                                     if mission_counts[key] <= 0:
                                         mission_counts.pop(key, None)
-                                    logger.info(f"do_catchup: Mission beendet: {mid} → {key}")
+                                    logger.info(f"do_catchup: Mission ended: {mid} → {key}")
 
         except Exception as e:
-            logger.error(f"Fehler beim Lesen der Journal-Datei {full}: {e}")
+            logger.error(f"Error while reading the Journal {full}: {e}")
 
-# === Plugin Einstiegspunkte ===
+# === Plugin entry ===
 def plugin_start3(plugin_dir):
     do_catchup()
     return "Courier"
