@@ -1,105 +1,107 @@
-import json
-import socket
 import threading
+import tkinter as tk
+from theme import theme
+import logging
 
-OVERLAY_HOST = '127.0.0.1'
-OVERLAY_PORT = 5010
-OVERLAY_ID = "courier_missions"
-
-# (ZielSystem, ZielStation) → Anzahl
 mission_counts = {}
-# MissionID → key (ZielSystem, ZielStation)
 mission_id_map = {}
-
 lock = threading.Lock()
 
-def send_overlay_block(text, x=10, y=300, size="normal", color="#FFFFFF", ttl=5):
-    msg = {
-        "id": OVERLAY_ID,
-        "text": text,
-        "size": size,
-        "color": color,
-        "x": x,
-        "y": y,
-        "ttl": ttl
-    }
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((OVERLAY_HOST, OVERLAY_PORT))
-            s.sendall((json.dumps(msg) + "\n").encode('utf-8'))
-    except Exception as e:
-        print(f"[CourierOverlay] Fehler beim Senden: {e}")
-
-def build_overlay_text():
-    lines = []
-    lines.append(f"{'System':<25} {'Station':<25} {'#':>3}")
-    lines.append("-" * 60)
-    with lock:
-        for (sysname, station), cnt in mission_counts.items():
-            lines.append(f"{sysname:<25} {station:<25} {cnt:>3}")
-    return "\n".join(lines)
-
-def update_overlay():
-    text = build_overlay_text()
-    send_overlay_block(text, x=10, y=300, size="normal", color="#FFFFFF", ttl=5)
+ui_frame = None
+rows_widgets = []  # Liste mit Zeilen (je 3 Labels)
 
 def plugin_start3(plugin_dir):
-    return
+    return "Courier"
 
-def prefs_changed(cmdr, is_beta):
-    return
+def plugin_app(parent: tk.Frame):
+    global ui_frame, rows_widgets
 
-def journal_entry(cmdr, is_beta, journal):
-    ev = journal.get('event')
-    if not ev:
+    ui_frame = tk.Frame(parent)
+    # Überschrift
+    header = tk.Label(ui_frame, text="Courier-Missionen", font=("TkDefaultFont", 10, "bold"))
+    header.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(2,2))
+
+    # Spaltenüberschriften
+    lbl_sys = tk.Label(ui_frame, text="System")
+    lbl_sta = tk.Label(ui_frame, text="Station")
+    lbl_cnt = tk.Label(ui_frame, text="Anz.")
+    lbl_sys.grid(row=1, column=0, sticky=tk.W, padx=2)
+    lbl_sta.grid(row=1, column=1, sticky=tk.W, padx=2)
+    lbl_cnt.grid(row=1, column=2, sticky=tk.E, padx=2)
+
+    # Keine festen Zeilen mehr anlegen, wird dynamisch gebaut
+    rows_widgets.clear()
+
+    theme.update(ui_frame)
+    return ui_frame
+
+def update_ui_table():
+    global rows_widgets
+    if ui_frame is None:
         return
 
-    # MissionAccepted
-    if ev == 'MissionAccepted':
-        mission_id = journal.get('MissionID')
-        sys = journal.get('DestinationSystem')
-        sta = journal.get('DestinationStation')
-        if sys and sta:
-            key = (sys, sta)
-            with lock:
-                mission_id_map[mission_id] = key
-                mission_counts[key] = mission_counts.get(key, 0) + 1
+    # Zuerst alte Zeilen löschen
+    for (w0, w1, w2) in rows_widgets:
+        w0.destroy()
+        w1.destroy()
+        w2.destroy()
+    rows_widgets.clear()
 
-    # MissionRedirected (Ziel geändert)
-    elif ev == 'MissionRedirected':
-        mission_id = journal.get('MissionID')
-        new_sys = journal.get('NewDestinationSystem')
-        new_sta = journal.get('NewDestinationStation')
-        if mission_id in mission_id_map and new_sys and new_sta:
-            with lock:
-                old_key = mission_id_map[mission_id]
-                # dekrementiere alten Zielzähler
-                mission_counts[old_key] = mission_counts.get(old_key, 1) - 1
-                if mission_counts[old_key] <= 0:
-                    del mission_counts[old_key]
-                # setze neuen Ziel
-                new_key = (new_sys, new_sta)
-                mission_id_map[mission_id] = new_key
-                mission_counts[new_key] = mission_counts.get(new_key, 0) + 1
+    with lock:
+        items = list(mission_counts.items())
 
-    # MissionCompleted oder MissionAbandoned oder MissionFailed
-    elif ev in ('MissionCompleted', 'MissionAbandoned', 'MissionFailed'):
-        mission_id = journal.get('MissionID')
-        if mission_id in mission_id_map:
+    # Neue Zeilen dynamisch erzeugen
+    start_row = 2  # unter Überschrift und Kopfzeile
+    for i, (sys_sta, count) in enumerate(items):
+        sysname, station = sys_sta
+        w0 = tk.Label(ui_frame, text=sysname)
+        w1 = tk.Label(ui_frame, text=station)
+        w2 = tk.Label(ui_frame, text=str(count))
+        w0.grid(row=start_row + i, column=0, sticky=tk.W, padx=2)
+        w1.grid(row=start_row + i, column=1, sticky=tk.W, padx=2)
+        w2.grid(row=start_row + i, column=2, sticky=tk.E, padx=2)
+        rows_widgets.append((w0, w1, w2))
+
+    theme.update(ui_frame)
+
+def journal_entry(cmdr, is_beta, journal):
+    ev = journal.get("event")
+    if not ev:
+        return
+    if ev == "MissionAccepted":
+        mid = journal.get("MissionID")
+        sysn = journal.get("DestinationSystem")
+        sta = journal.get("DestinationStation")
+        if mid and sysn and sta:
             with lock:
-                key = mission_id_map.pop(mission_id)
-                # dekrementiere
+                mission_id_map[mid] = (sysn, sta)
+                mission_counts[(sysn, sta)] = mission_counts.get((sysn, sta), 0) + 1
+    elif ev == "MissionRedirected":
+        mid = journal.get("MissionID")
+        newsys = journal.get("NewDestinationSystem")
+        newsta = journal.get("NewDestinationStation")
+        if mid in mission_id_map and newsys and newsta:
+            with lock:
+                old = mission_id_map[mid]
+                mission_counts[old] = mission_counts.get(old, 1) - 1
+                if mission_counts[old] <= 0:
+                    del mission_counts[old]
+                newkey = (newsys, newsta)
+                mission_id_map[mid] = newkey
+                mission_counts[newkey] = mission_counts.get(newkey, 0) + 1
+    elif ev in ("MissionCompleted", "MissionAbandoned", "MissionFailed"):
+        mid = journal.get("MissionID")
+        if mid in mission_id_map:
+            with lock:
+                key = mission_id_map.pop(mid)
                 mission_counts[key] = mission_counts.get(key, 1) - 1
                 if mission_counts[key] <= 0:
                     del mission_counts[key]
 
-    # Nach Änderungen Overlay updaten
-    update_overlay()
+    try:
+        ui_frame.after(0, update_ui_table)
+    except Exception as e:
+        logging.getLogger().error(f"Error updating UI: {e}")
 
 def plugin_stop():
-    # löschen
-    try:
-        send_overlay_block("", x=0, y=0, size="normal", color="#000000", ttl=0)
-    except:
-        pass
     return
