@@ -2,9 +2,27 @@ import os
 import json
 import threading
 import tkinter as tk
+import myNotebook as nb
 import logging
 from theme import theme
 from config import appname
+from config import config
+from typing import Optional
+import settings
+
+def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> Optional[tk.Frame]:
+    logger.info("plugin_prefs() aufgerufen")
+    try:
+        return settings.plugin_prefs(parent, cmdr, is_beta)
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen des Settings-Frames: {e}")
+        return None
+        
+def prefs_changed(cmdr, is_beta):
+    try:
+        settings.prefs_changed(cmdr, is_beta)
+    except Exception as e:
+        logger.error(f"Fehler beim Speichern der Settings: {e}")
 
 # === Logger Setup ===
 plugin_name = os.path.basename(os.path.dirname(__file__))
@@ -27,7 +45,7 @@ lock = threading.Lock()
 ui_frame = None
 rows_widgets = []
 
-logger.info("Courier Plugin started")
+logger.info("Courier Plugin starting")
 # === Plugin-UI ===
 def plugin_app(parent: tk.Frame):
     global ui_frame
@@ -213,7 +231,7 @@ def do_catchup():
 # === Plugin entry ===
 def plugin_start3(plugin_dir):
     do_catchup()
-    return "Courier"
+    return "EDMC-Courier-Mission"
 
 def plugin_load():
     return plugin_instance
