@@ -33,12 +33,11 @@ def plugin_app(parent: tk.Frame):
     global ui_frame
     ui_frame = tk.Frame(parent)
 
-    header = tk.Label(ui_frame, text="Courier-Missions", font=("TkDefaultFont", 10, "bold"))
-    header.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(2,2))
+    # Hauptüberschrift bleibt immer sichtbar
+    header = tk.Label(ui_frame, text="Courier-Missions", font=("TkDefaultFont", 9, "bold"))
+    header.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(2,1))
 
-    tk.Label(ui_frame, text="System").grid(row=1, column=0, sticky=tk.W, padx=2)
-    tk.Label(ui_frame, text="Station").grid(row=1, column=1, sticky=tk.W, padx=2)
-    tk.Label(ui_frame, text="Count.").grid(row=1, column=2, sticky=tk.E, padx=2)
+    # Keine statischen Spaltenüberschriften mehr hier, die kommen dynamisch in update_ui_table()
 
     theme.update(ui_frame)
     ui_frame.after(0, update_ui_table)
@@ -48,27 +47,43 @@ def update_ui_table():
     global rows_widgets
     if ui_frame is None:
         return
-
-    for (w0, w1, w2) in rows_widgets:
-        w0.destroy()
-        w1.destroy()
-        w2.destroy()
+    # Alte Widgets entfernen (Überschriften, Zeilen, Hinweis)
+    for w in rows_widgets:
+        w.destroy()
     rows_widgets.clear()
 
     with lock:
         items = list(mission_counts.items())
 
     start_row = 2
-    for i, ((sysname, station), count) in enumerate(items):
-        w0 = tk.Label(ui_frame, text=sysname)
-        w1 = tk.Label(ui_frame, text=station)
-        w2 = tk.Label(ui_frame, text=str(count))
-        w0.grid(row=start_row + i, column=0, sticky=tk.W, padx=2)
-        w1.grid(row=start_row + i, column=1, sticky=tk.W, padx=2)
-        w2.grid(row=start_row + i, column=2, sticky=tk.E, padx=2)
-        rows_widgets.append((w0, w1, w2))
+    if items:
+        # Überschriften anzeigen
+        lbl_sys = tk.Label(ui_frame, text="System")
+        lbl_sta = tk.Label(ui_frame, text="Station")
+        lbl_cnt = tk.Label(ui_frame, text="Anz.")
+        lbl_sys.grid(row=1, column=0, sticky=tk.W, padx=2)
+        lbl_sta.grid(row=1, column=1, sticky=tk.W, padx=2)
+        lbl_cnt.grid(row=1, column=2, sticky=tk.E, padx=2)
+        rows_widgets.extend([lbl_sys, lbl_sta, lbl_cnt])
+
+        # Missionsdaten anzeigen
+        for i, (sys_sta, cnt) in enumerate(items):
+            sysname, station = sys_sta
+            w0 = tk.Label(ui_frame, text=sysname)
+            w1 = tk.Label(ui_frame, text=station)
+            w2 = tk.Label(ui_frame, text=str(cnt))
+            w0.grid(row=start_row + i, column=0, sticky=tk.W, padx=2)
+            w1.grid(row=start_row + i, column=1, sticky=tk.W, padx=2)
+            w2.grid(row=start_row + i, column=2, sticky=tk.E, padx=2)
+            rows_widgets.extend([w0, w1, w2])
+    else:
+        # Keine Missionen – Hinweis anzeigen
+        hint = tk.Label(ui_frame, text="Keine aktiven Missionen", fg="gray")
+        hint.grid(row=1, column=0, columnspan=3, pady=3)
+        rows_widgets.append(hint)
 
     theme.update(ui_frame)
+
 
 # === Plugin-Klasse ===
 def journal_entry(cmdr, is_beta, system, station, entry, state):
