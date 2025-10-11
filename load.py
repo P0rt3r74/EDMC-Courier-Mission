@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 import myNotebook as nb
 import logging
+import fnmatch
 from theme import theme
 from config import appname
 from config import config
@@ -24,6 +25,14 @@ def prefs_changed(cmdr, is_beta):
     except Exception as e:
         logger.error(f"Fehler beim Speichern der Settings: {e}")
 
+
+# === helper setup ===
+def is_courier(mis_name):
+    if fnmatch.fnmatch(mis_name, "Mission_Courier*"):
+        return True
+    else:
+        return False
+        
 # === Logger Setup ===
 plugin_name = os.path.basename(os.path.dirname(__file__))
 logger = logging.getLogger(plugin_name)
@@ -111,7 +120,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
     ev = entry.get("event")
     if ev == "LoadGame":
         do_catchup()
-    if ev == "MissionAccepted":
+    if (ev == "MissionAccepted") and (is_courier(entry.get("Name"))):
         mid = entry.get("MissionID")
         sysn = entry.get("DestinationSystem")
         sta = entry.get("DestinationStation")
@@ -120,7 +129,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 mission_id_map[mid] = (sysn, sta)
                 mission_counts[(sysn, sta)] = mission_counts.get((sysn, sta), 0) + 1
 
-    elif ev == "MissionRedirected":
+    elif (ev == "MissionRedirected") and (is_courier(entry.get("Name"))):
         mid = entry.get("MissionID")
         newsys = entry.get("NewDestinationSystem")
         newsta = entry.get("NewDestinationStation")
@@ -134,7 +143,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 mission_id_map[mid] = newkey
                 mission_counts[newkey] = mission_counts.get(newkey, 0) + 1
 
-    elif ev in ("MissionCompleted", "MissionAbandoned", "MissionFailed"):
+    elif (ev in ("MissionCompleted", "MissionAbandoned", "MissionFailed")) and (is_courier(entry.get("Name"))):
         mid = entry.get("MissionID")
         if mid in mission_id_map:
             with lock:
@@ -169,7 +178,7 @@ def do_catchup():
 
     # 1. collect all active Missions
     active_mission_ids = set()
-    for fname in reversed(files): 
+    for fname in reversed(files):
         full = os.path.join(journal_dir, fname)
         try:
             with open(full, "r", encoding="utf-8") as f:
@@ -184,16 +193,18 @@ def do_catchup():
                     if obj.get("event") == "Missions":
                         active = obj.get("Active", [])
                         for mission in active:
-                            mid = mission.get("MissionID")
-                            if mid is not None:
-                                active_mission_ids.add(mid)
+                            if fnmatch.fnmatch(mission.get("Name"), "Mission_Courier_*"):
+                                mid = mission.get("MissionID")
+                                logger.info(f"Found Courier Mission in Active missions ID: {mid}")
+                                if mid is not None:
+                                    active_mission_ids.add(mid)
         except Exception as e:
-            logger.error(f"Error while reading the Journal {full}: {e}")
+            logger.error(f"Error while reading the Journal 1 {full}: {e}")
 
     logger.info(f"Found active missionIDs: {active_mission_ids}")
 
     # 2. get System and Station of active missionIDs
-    for fname in files:
+    for fname in reversed(files):
         full = os.path.join(journal_dir, fname)
         try:
             with open(full, "r", encoding="utf-8") as f:
@@ -206,8 +217,9 @@ def do_catchup():
                     except json.JSONDecodeError:
                         continue
                     ev = obj.get("event")
+                    na = obj.get("Name")
 
-                    if ev == "MissionAccepted":
+                    if (ev == "MissionAccepted"):
                         mid = obj.get("MissionID")
                         if mid in active_mission_ids:
                             sysn = obj.get("DestinationSystem")
@@ -217,9 +229,9 @@ def do_catchup():
                                     if mid not in mission_id_map:
                                         mission_id_map[mid] = (sysn, sta)
                                         mission_counts[(sysn, sta)] = mission_counts.get((sysn, sta), 0) + 1
-                                        logger.info(f"do_catchup: MissionAccepted: {mid} → {(sysn, sta)}")
+                                        logger.info(f"do_catchup: MissionAccepted: {mid} → {(sysn, sta, na)}")
 
-                    elif ev in ("MissionCompleted", "MissionAbandoned", "MissionFailed"):
+                    elif (ev in ("MissionCompleted", "MissionAbandoned", "MissionFailed")):
                         mid = obj.get("MissionID")
                         if mid in active_mission_ids:
                             with lock:
@@ -228,10 +240,10 @@ def do_catchup():
                                     mission_counts[key] = mission_counts.get(key, 1) - 1
                                     if mission_counts[key] <= 0:
                                         mission_counts.pop(key, None)
-                                    logger.info(f"do_catchup: Mission ended: {mid} → {key}")
+                                    logger.info(f"do_catchup: Mission ended: {mid} → {key},, {na}")
 
         except Exception as e:
-            logger.error(f"Error while reading the Journal {full}: {e}")
+            logger.error(f"Error while reading the Journal 2 {full}: {e}")
 
 # === Plugin entry ===
 def plugin_start3(plugin_dir):
